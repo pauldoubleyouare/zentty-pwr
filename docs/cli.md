@@ -58,6 +58,35 @@ zentty list panes --json
 zentty list panes --worklane-id wl_123 --include-control-token --json
 ```
 
+### JSON output
+
+`--json` is honoured wherever it appears — `zentty list panes --json` and `zentty list --json panes` are equivalent. With `--json` the command writes only JSON to stdout: no table, no ANSI escapes, no log lines.
+
+The tables truncate titles to fit their columns; **JSON never truncates**. Use JSON whenever you need a pane's real title or an addressable ID.
+
+Every pane object carries these keys, always present and `null` when unknown:
+
+| Key | Notes |
+| --- | --- |
+| `id` | Raw pane ID such as `pn_7f3c1a` — the value `pane focus`, `pane close`, and `pane rename --pane-id` accept |
+| `worklaneID` | Raw worklane ID such as `wl_4c2e` |
+| `windowID` | Raw window ID |
+| `index`, `column` | 1-based position within the worklane |
+| `title` | Full pane title, never truncated; empty string when the pane has none |
+| `cwd` | Working directory; `workingDirectory` carries the same value |
+| `agent` | Agent tool; `agentTool` carries the same value |
+| `status` | Agent status; `agentStatus` carries the same value |
+| `isFocused` | Whether the pane holds focus |
+| `controlToken` | Populated only with `--include-control-token` |
+
+Worklane objects carry `id`, `windowID`, `order`, `title` (full, never truncated, `null` when unset), `isFocused`, `paneCount`, `columnCount`, and `focusedPaneID`.
+
+Resolve a pane ID to its current title:
+
+```bash
+zentty list panes --json | jq -r '.[] | select(.id == "pn_7f3c1a") | .title'
+```
+
 ## Select
 
 Resolve a single pane target and print its IDs.

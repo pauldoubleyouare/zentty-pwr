@@ -310,6 +310,141 @@ struct DiscoveredPane: Codable, Equatable {
     let controlToken: String?
 }
 
+// MARK: - CLI JSON Output
+
+/// One pane in the JSON emitted by the `--json` discovery commands
+/// (`zentty list`, `zentty list panes`, `zentty pane list`).
+///
+/// Separate from `DiscoveredPane` — the IPC wire type — because the CLI's JSON
+/// is a contract for external tools and carries two guarantees the wire type
+/// does not:
+///
+/// 1. **Every key is always present.** Synthesized `Codable` drops `nil`
+///    optionals, so a consumer would see keys appear and disappear between
+///    runs. This type encodes `null` instead.
+/// 2. **Nothing is truncated.** `title` is the full pane title, however long;
+///    the human-readable tables truncate, JSON never does.
+///
+/// `cwd` / `agent` / `status` are the names external tools address; the longer
+/// `workingDirectory` / `agentTool` / `agentStatus` keep the wire-type spelling
+/// so existing `zentty pane list --json` consumers keep working. Each pair
+/// always carries the same value.
+struct PaneJSONEntry: Encodable, Equatable {
+    let id: String
+    let windowID: String
+    let worklaneID: String
+    let index: Int
+    let column: Int
+    /// Full pane title, never truncated. Empty when the pane has no title.
+    let title: String
+    let cwd: String?
+    let isFocused: Bool
+    let agent: String?
+    let status: String?
+    let controlToken: String?
+
+    init(pane: DiscoveredPane) {
+        id = pane.id
+        windowID = pane.windowID
+        worklaneID = pane.worklaneID
+        index = pane.index
+        column = pane.column
+        title = pane.title
+        cwd = pane.workingDirectory
+        isFocused = pane.isFocused
+        agent = pane.agentTool
+        status = pane.agentStatus
+        controlToken = pane.controlToken
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case windowID
+        case worklaneID
+        case index
+        case column
+        case title
+        case cwd
+        case workingDirectory
+        case isFocused
+        case agent
+        case agentTool
+        case status
+        case agentStatus
+        case controlToken
+    }
+
+    // Written by hand rather than synthesized: the synthesized encoder uses
+    // `encodeIfPresent` for optionals and would omit the key entirely.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(windowID, forKey: .windowID)
+        try container.encode(worklaneID, forKey: .worklaneID)
+        try container.encode(index, forKey: .index)
+        try container.encode(column, forKey: .column)
+        try container.encode(title, forKey: .title)
+        try container.encode(cwd, forKey: .cwd)
+        try container.encode(cwd, forKey: .workingDirectory)
+        try container.encode(isFocused, forKey: .isFocused)
+        try container.encode(agent, forKey: .agent)
+        try container.encode(agent, forKey: .agentTool)
+        try container.encode(status, forKey: .status)
+        try container.encode(status, forKey: .agentStatus)
+        try container.encode(controlToken, forKey: .controlToken)
+    }
+}
+
+/// One worklane in the JSON emitted by the `--json` discovery commands
+/// (`zentty list worklanes`, `zentty worklane list`). Same two guarantees as
+/// `PaneJSONEntry`: every key present, `title` never truncated.
+struct WorklaneJSONEntry: Encodable, Equatable {
+    let id: String
+    let windowID: String
+    let order: Int
+    /// Full worklane title, never truncated. `null` when the worklane has none.
+    let title: String?
+    let isFocused: Bool
+    let paneCount: Int
+    let columnCount: Int
+    let focusedPaneID: String?
+
+    init(worklane: DiscoveredWorklane) {
+        id = worklane.id
+        windowID = worklane.windowID
+        order = worklane.order
+        title = worklane.title
+        isFocused = worklane.isFocused
+        paneCount = worklane.paneCount
+        columnCount = worklane.columnCount
+        focusedPaneID = worklane.focusedPaneID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case windowID
+        case order
+        case title
+        case isFocused
+        case paneCount
+        case columnCount
+        case focusedPaneID
+    }
+
+    // Hand-written for the same reason as `PaneJSONEntry.encode(to:)`.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(windowID, forKey: .windowID)
+        try container.encode(order, forKey: .order)
+        try container.encode(title, forKey: .title)
+        try container.encode(isFocused, forKey: .isFocused)
+        try container.encode(paneCount, forKey: .paneCount)
+        try container.encode(columnCount, forKey: .columnCount)
+        try container.encode(focusedPaneID, forKey: .focusedPaneID)
+    }
+}
+
 struct ServerListEntry: Codable, Equatable {
     let id: String
     let origin: String

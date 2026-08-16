@@ -655,8 +655,7 @@ struct PaneListCommand: ParsableCommand {
 
     @OptionGroup var filters: PaneDiscoveryFilterOptions
 
-    @Flag(name: .long, help: "Output as JSON.")
-    var json = false
+    @OptionGroup var output: ListOutputOptions
 
     mutating func run() throws {
         var arguments = filters.arguments()
@@ -668,7 +667,7 @@ struct PaneListCommand: ParsableCommand {
             }
             arguments.append(contentsOf: ["--worklane-id", worklaneID])
         }
-        try renderPanes(arguments: arguments, json: json)
+        try renderPanes(arguments: arguments, json: output.json)
     }
 }
 

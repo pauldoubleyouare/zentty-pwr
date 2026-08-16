@@ -106,6 +106,21 @@ struct PaneDiscoveryFilterOptions: ParsableArguments {
     }
 }
 
+/// `--json` for the discovery commands.
+///
+/// This has to be an `OptionGroup` rather than a bare `@Flag` on each command.
+/// `zentty list` declares subcommands *and* accepts `--json` itself, and
+/// ArgumentParser lets a parent consume any flag it recognises from anywhere in
+/// the argument list before the subcommand is parsed. A duplicate `@Flag json`
+/// on both `list` and `list panes` therefore leaves the leaf reading `false`
+/// for `zentty list panes --json`, and the human table prints. An `OptionGroup`
+/// declared on both is decoded once by the parent and reused by the leaf, so
+/// the flag is honoured wherever it appears.
+struct ListOutputOptions: ParsableArguments {
+    @Flag(name: .long, help: "Output as JSON.")
+    var json = false
+}
+
 struct ListCommandGroup: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "list",
@@ -119,12 +134,11 @@ struct ListCommandGroup: ParsableCommand {
 
     @OptionGroup var filters: PaneDiscoveryFilterOptions
 
-    @Flag(name: .long, help: "Output as JSON.")
-    var json = false
+    @OptionGroup var output: ListOutputOptions
 
     mutating func run() throws {
         let overview = try fetchTopologyOverview(filters: filters)
-        if json {
+        if output.json {
             try printJSON(overview)
             return
         }
@@ -163,12 +177,11 @@ struct ListWindowsCommand: ParsableCommand {
         abstract: "List windows."
     )
 
-    @Flag(name: .long, help: "Output as JSON.")
-    var json = false
+    @OptionGroup var output: ListOutputOptions
 
     mutating func run() throws {
         let windows = try DiscoveryIPC.send(subcommand: "windows")?.result?.discoveredWindows ?? []
-        if json {
+        if output.json {
             try printJSON(windows)
             return
         }
@@ -193,12 +206,11 @@ struct WindowListCommand: ParsableCommand {
         abstract: "List windows."
     )
 
-    @Flag(name: .long, help: "Output as JSON.")
-    var json = false
+    @OptionGroup var output: ListOutputOptions
 
     mutating func run() throws {
         var command = ListWindowsCommand()
-        command.json = json
+        command.output = output
         try command.run()
     }
 }
@@ -211,16 +223,15 @@ struct ListWorklanesCommand: ParsableCommand {
 
     @OptionGroup var filters: PaneDiscoveryFilterOptions
 
-    @Flag(name: .long, help: "Output as JSON.")
-    var json = false
+    @OptionGroup var output: ListOutputOptions
 
     mutating func run() throws {
         let worklanes = try DiscoveryIPC.send(
             subcommand: "worklanes",
             arguments: filters.arguments()
         )?.result?.discoveredWorklanes ?? []
-        if json {
-            try printJSON(worklanes)
+        if output.json {
+            try printJSON(worklanes.map(WorklaneJSONEntry.init(worklane:)))
             return
         }
 
@@ -246,13 +257,12 @@ struct WorklaneListCommand: ParsableCommand {
 
     @OptionGroup var filters: PaneDiscoveryFilterOptions
 
-    @Flag(name: .long, help: "Output as JSON.")
-    var json = false
+    @OptionGroup var output: ListOutputOptions
 
     mutating func run() throws {
         var command = ListWorklanesCommand()
         command.filters = filters
-        command.json = json
+        command.output = output
         try command.run()
     }
 }
@@ -265,11 +275,10 @@ struct ListPanesCommand: ParsableCommand {
 
     @OptionGroup var filters: PaneDiscoveryFilterOptions
 
-    @Flag(name: .long, help: "Output as JSON.")
-    var json = false
+    @OptionGroup var output: ListOutputOptions
 
     mutating func run() throws {
-        try renderPanes(arguments: filters.arguments(), json: json)
+        try renderPanes(arguments: filters.arguments(), json: output.json)
     }
 }
 
@@ -371,11 +380,35 @@ private struct TopologyWindow: Encodable {
 private struct TopologyWorklane: Encodable {
     let id: String
     let order: Int
+    /// Full worklane title, never truncated. `null` when the worklane has none.
     let title: String?
     let isFocused: Bool
     let columnCount: Int
     let focusedPaneID: String?
-    let panes: [DiscoveredPane]
+    let panes: [PaneJSONEntry]
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case order
+        case title
+        case isFocused
+        case columnCount
+        case focusedPaneID
+        case panes
+    }
+
+    // Hand-written so `title` and `focusedPaneID` encode as `null` instead of
+    // vanishing from the object — see `PaneJSONEntry.encode(to:)`.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(order, forKey: .order)
+        try container.encode(title, forKey: .title)
+        try container.encode(isFocused, forKey: .isFocused)
+        try container.encode(columnCount, forKey: .columnCount)
+        try container.encode(focusedPaneID, forKey: .focusedPaneID)
+        try container.encode(panes, forKey: .panes)
+    }
 }
 
 private func fetchTopologyOverview(filters: PaneDiscoveryFilterOptions) throws -> TopologyOverview {
@@ -424,6 +457,7 @@ private func fetchTopologyOverview(filters: PaneDiscoveryFilterOptions) throws -
                                     }
                                     return lhs.column < rhs.column
                                 }
+                                .map(PaneJSONEntry.init(pane:))
                         )
                     }
                     .sorted { $0.order < $1.order }
@@ -455,9 +489,9 @@ private func renderTopologyOverview(_ overview: TopologyOverview) {
             )
 
             for pane in worklane.panes {
-                let cwd = pane.workingDirectory.map(abbreviateHome).map { truncateLeading($0, 42) } ?? "-"
+                let cwd = pane.cwd.map(abbreviateHome).map { truncateLeading($0, 42) } ?? "-"
                 let title = truncateTail(nonEmpty(pane.title), 42)
-                let agentSummary = renderAgentSummary(tool: pane.agentTool, status: pane.agentStatus)
+                let agentSummary = renderAgentSummary(tool: pane.agent, status: pane.status)
                 let agentSuffix = agentSummary.map { "  \($0)" } ?? ""
                 print(
                     "    pane \(focusMarker(pane.isFocused))  \(pad(String(pane.index), 2))  \(pane.id)  \(pad(title, 42))  \(cwd)\(agentSuffix)"
@@ -478,7 +512,7 @@ func renderPanes(arguments: [String], json: Bool) throws {
     )?.result?.discoveredPanes ?? []
 
     if json {
-        try printJSON(panes)
+        try printJSON(panes.map(PaneJSONEntry.init(pane:)))
         return
     }
 
@@ -502,7 +536,9 @@ func renderPanes(arguments: [String], json: Bool) throws {
 
 func printJSON<T: Encodable>(_ value: T) throws {
     let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    // `withoutEscapingSlashes` keeps cwd values readable as `/tmp/project`
+    // rather than `\/tmp\/project`. Both are valid JSON to any parser.
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     let data = try encoder.encode(value)
     print(String(data: data, encoding: .utf8) ?? "")
 }
