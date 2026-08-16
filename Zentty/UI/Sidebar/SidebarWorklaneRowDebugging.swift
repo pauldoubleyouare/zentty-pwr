@@ -80,6 +80,15 @@ struct SidebarWorklaneRowDebugSnapshot {
     let primaryTextMinX: CGFloat?
     let primaryTextMaxTrailingInset: CGFloat?
     let backgroundColor: NSColor?
+    /// The lane group border — the stroke fencing this worklane's card.
+    let groupBorderColor: NSColor?
+    let groupBorderWidth: CGFloat
+    /// Lane-colored bloom behind an active card, `nil` when the card is drawing
+    /// an ordinary drop shadow instead.
+    let groupGlowColor: NSColor?
+    let groupGlowRadius: CGFloat
+    /// The rule under the lane header title.
+    let headerRuleColor: NSColor?
     let appearanceMatch: NSAppearance.Name?
     let configureApplyCount: Int
 }
@@ -131,6 +140,7 @@ struct SidebarWorklaneRowDebugAccess {
     let paneRowButtons: [SidebarPaneRowButton]
     let paneRowContainers: [SidebarInsetContainerView]
     let tintLayer: CALayer
+    let topLabelSeparator: NSView
     let setHovered: (Bool) -> Void
     let setStatusProgressRevealVisible: (Bool, Bool) -> Void
 }
@@ -187,6 +197,9 @@ extension SidebarWorklaneRowButton {
             primaryTextMinX = nil
             primaryTextMaxTrailingInset = nil
         }
+
+        let glowColor = access.owner.layer?.shadowColor.flatMap(NSColor.init(cgColor:))
+        let isGlowing = access.owner.layer?.shadowOffset == .zero && glowColor != nil
 
         return SidebarWorklaneRowDebugSnapshot(
             detailTexts: detailTexts,
@@ -284,6 +297,14 @@ extension SidebarWorklaneRowButton {
             primaryTextMinX: primaryTextMinX,
             primaryTextMaxTrailingInset: primaryTextMaxTrailingInset,
             backgroundColor: access.owner.layer?.backgroundColor.flatMap(NSColor.init(cgColor:)),
+            groupBorderColor: access.owner.layer?.borderColor.flatMap(NSColor.init(cgColor:)),
+            groupBorderWidth: access.owner.layer?.borderWidth ?? 0,
+            // The bloom is the one shadow drawn with no offset — an ordinary
+            // card shadow always falls downward.
+            groupGlowColor: isGlowing ? glowColor : nil,
+            groupGlowRadius: isGlowing ? (access.owner.layer?.shadowRadius ?? 0) : 0,
+            headerRuleColor: access.topLabelSeparator.layer?.backgroundColor
+                .flatMap(NSColor.init(cgColor:)),
             appearanceMatch: access.owner.appearance?.bestMatch(from: [.darkAqua, .aqua]),
             configureApplyCount: access.configureApplyCount
         )

@@ -832,7 +832,6 @@ final class SidebarWorklaneRowButton: NSButton {
         let selectedChrome = SidebarWorklaneRowStyleResolver.selectedRowChrome(
             worklaneColor: summary.color,
             activeBackground: currentTheme.sidebarButtonActiveBackground,
-            activeBorder: currentTheme.sidebarButtonActiveBorder,
             activeText: currentTheme.sidebarButtonActiveText,
             theme: currentTheme
         )
@@ -840,11 +839,15 @@ final class SidebarWorklaneRowButton: NSButton {
         let inactiveTextColor = currentTheme.sidebarButtonInactiveText
 
         topLabel.textColor = SidebarWorklaneRowStyleResolver.topLabelTextColor(
+            worklaneColor: summary.color,
             isActive: summary.isActive,
             activeTextColor: activeTextColor,
             theme: currentTheme
         )
-        topLabelSeparator.layer?.backgroundColor = currentTheme.sidebarBorder.cgColor
+        topLabelSeparator.layer?.backgroundColor = SidebarWorklaneRowStyleResolver.headerRuleColor(
+            worklaneColor: summary.color,
+            theme: currentTheme
+        ).cgColor
         overflowLabel.textColor = SidebarWorklaneRowStyleResolver.overflowTextColor(
             isActive: summary.isActive,
             activeTextColor: activeTextColor,
@@ -924,7 +927,7 @@ final class SidebarWorklaneRowButton: NSButton {
             summary: summary,
             theme: currentTheme,
             activeBackground: selectedChrome.background,
-            activeBorder: selectedChrome.border,
+            activeBorder: currentTheme.sidebarButtonActiveBorder,
             isWorking: isWorking,
             isHovered: isHovered,
             isPaneRowHovered: isPaneRowHovered,
@@ -1206,6 +1209,7 @@ final class SidebarWorklaneRowButton: NSButton {
             paneRowButtons: paneRowButtons,
             paneRowContainers: paneRowContainers,
             tintLayer: chrome.tintLayer,
+            topLabelSeparator: topLabelSeparator,
             setHovered: { [weak self] hovered in
                 self?.isHovered = hovered
                 self?.applyCurrentAppearance(animated: false)

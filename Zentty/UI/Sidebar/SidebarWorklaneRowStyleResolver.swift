@@ -1,15 +1,38 @@
 import AppKit
 
 enum SidebarWorklaneRowStyleResolver {
-    /// Resolved selected-row chrome: the near-opaque fill, its border, and a
-    /// legible active-text color for that fill.
+    /// Resolved selected-row chrome: the near-opaque fill and a legible
+    /// active-text color for that fill. The row's stroke is not here — a lane's
+    /// border is owned end to end by `groupBorder`, so there is exactly one
+    /// place that decides how a card is fenced.
     struct SelectedRowChrome {
         let background: NSColor
-        let border: NSColor
         let text: NSColor
     }
 
-    /// Selected-row fill / border / text for the current emphasis mode.
+    /// The stroke fencing one worklane's card — header plus every pane row that
+    /// belongs to that lane — off from the lanes above and below it.
+    struct GroupBorder: Equatable {
+        let color: NSColor
+        let width: CGFloat
+        /// Neon bloom cast behind the card. `nil` for everything except an
+        /// active, lane-colored card on a dark sidebar.
+        let glow: NSColor?
+    }
+
+    /// Group-border geometry.
+    ///
+    /// The card's content inset (`SidebarWorklaneRowButton.Layout.contentInset`,
+    /// 6pt) is what caps the stroke: a 3pt border would leave 3pt of clearance
+    /// to a hovered pane row's fill and read as cramped. 2pt idle / 2.5pt active
+    /// keeps the boundary unmistakable while leaving the pane rows room to
+    /// breathe, and 2.5pt lands on a whole pixel at 2x.
+    enum GroupBorderMetrics {
+        static let idle: CGFloat = 2
+        static let active: CGFloat = 2.5
+    }
+
+    /// Selected-row fill / text for the current emphasis mode.
     ///
     /// - `.subtle`, or `.vivid` without a worklane color: returns the theme's
     ///   accent-derived values untouched, so those paths stay byte-for-byte as
@@ -18,20 +41,17 @@ enum SidebarWorklaneRowStyleResolver {
     ///   lane color so the selected row reads as clearly lane-tinted, mirroring
     ///   how the focused pane border prefers the worklane color over
     ///   `theme.paneBorderFocused` (see `PaneContainerView.applyVisualState`).
-    ///   The border uses `WorklaneColor.Alpha.focusedBorder` (0.55) to match the
-    ///   focused-pane stroke, and the text is re-guaranteed against the lane fill
-    ///   via `ensuringTextContrast(on:)`.
+    ///   The text is re-guaranteed against the lane fill via
+    ///   `ensuringTextContrast(on:)`.
     static func selectedRowChrome(
         worklaneColor: WorklaneColor?,
         activeBackground: NSColor,
-        activeBorder: NSColor,
         activeText: NSColor,
         theme: ZenttyTheme
     ) -> SelectedRowChrome {
         guard theme.sidebarSelectionEmphasis == .vivid, let worklaneColor else {
             return SelectedRowChrome(
                 background: activeBackground,
-                border: activeBorder,
                 text: activeText
             )
         }
@@ -47,15 +67,87 @@ enum SidebarWorklaneRowStyleResolver {
         let laneFill = worklaneColor.tint(alpha: 1)
             .mixed(towards: sidebarSurface, amount: isDark ? 0.55 : 0.45)
             .withAlphaComponent(theme.reducedTransparency ? 0.96 : 0.92)
-        let laneBorder = worklaneColor.tint(alpha: WorklaneColor.Alpha.focusedBorder)
         let laneText = activeText.ensuringTextContrast(
             on: laneFill.composited(over: sidebarSurface)
         )
         return SelectedRowChrome(
             background: laneFill,
-            border: laneBorder,
             text: laneText
         )
+    }
+
+    /// The lane-colored fence around a worklane card.
+    ///
+    /// Every card gets the same 2pt geometry so the sidebar always reads as a
+    /// stack of discrete lanes rather than a run-on list; the lane color decides
+    /// whether that fence is neon or neutral. Uncolored lanes fall back to the
+    /// theme's row borders, which is the only thing that kept the boundary
+    /// before — just drawn at the group weight instead of a hairline.
+    ///
+    /// Alpha is appearance-split (`Alpha.GroupBorder`) because the light hexes
+    /// are deep rather than bright and need more weight to hold an edge.
+    static func groupBorder(
+        worklaneColor: WorklaneColor?,
+        isActive: Bool,
+        isHovered: Bool,
+        isPaneRowHovered: Bool,
+        activeBorder: NSColor,
+        inactiveBorder: NSColor,
+        theme: ZenttyTheme
+    ) -> GroupBorder {
+        let width = isActive ? GroupBorderMetrics.active : GroupBorderMetrics.idle
+
+        guard let worklaneColor else {
+            return GroupBorder(
+                color: isActive ? activeBorder : inactiveBorder,
+                width: width,
+                glow: nil
+            )
+        }
+
+        let isDark = theme.sidebarGlassAppearance == .dark
+        let alpha: CGFloat
+        if isActive {
+            alpha = isDark ? WorklaneColor.Alpha.GroupBorder.activeDark
+                : WorklaneColor.Alpha.GroupBorder.activeLight
+        } else if isHovered && !isPaneRowHovered {
+            alpha = isDark ? WorklaneColor.Alpha.GroupBorder.hoveredDark
+                : WorklaneColor.Alpha.GroupBorder.hoveredLight
+        } else {
+            alpha = isDark ? WorklaneColor.Alpha.GroupBorder.idleDark
+                : WorklaneColor.Alpha.GroupBorder.idleLight
+        }
+
+        // The bloom is what makes the stroke read as neon rather than as a
+        // plain outline, but it only works against a dark surface — on light it
+        // muddies the card edge, so light gets the stroke alone.
+        let glow: NSColor?
+        if isActive && isDark && theme.reducedTransparency == false {
+            glow = worklaneColor.tint(alpha: WorklaneColor.Alpha.groupGlow)
+        } else {
+            glow = nil
+        }
+
+        return GroupBorder(
+            color: worklaneColor.tint(alpha: alpha),
+            width: width,
+            glow: glow
+        )
+    }
+
+    /// The rule under a lane header's title, tinted to the lane.
+    ///
+    /// This is the quiet half of the header tie-in: a 1pt rule carries the hue
+    /// without competing with the title text sitting above it.
+    static func headerRuleColor(
+        worklaneColor: WorklaneColor?,
+        theme: ZenttyTheme
+    ) -> NSColor {
+        guard let worklaneColor else {
+            return theme.sidebarBorder
+        }
+
+        return worklaneColor.tint(alpha: WorklaneColor.Alpha.headerRule)
     }
 
     static func tintColor(
@@ -165,12 +257,63 @@ enum SidebarWorklaneRowStyleResolver {
         isActive ? activeTextColor : inactiveTextColor
     }
 
+    /// The lane header's title color.
+    ///
+    /// An **active** card already sits on a lane-tinted fill, so tinting its
+    /// title too would be the third statement of the same fact — it keeps the
+    /// theme's active text. An **idle** colored card pulls the lane hue into
+    /// what is otherwise flat tertiary text, which is what ties the header to
+    /// the border around it.
+    ///
+    /// The hue is mixed toward the tertiary text rather than used raw — a raw
+    /// lane color reads as a swatch, not a label — and the result is then
+    /// pushed to AA against the sidebar surface. A deep light-appearance hex
+    /// blended with light-appearance tertiary text lands below 4.5:1 on its
+    /// own, so the push is what makes the tie-in safe to ship on light.
     static func topLabelTextColor(
+        worklaneColor: WorklaneColor? = nil,
         isActive: Bool,
         activeTextColor: NSColor,
         theme: ZenttyTheme
     ) -> NSColor {
-        isActive ? activeTextColor.withAlphaComponent(0.66) : theme.tertiaryText
+        guard isActive == false, let worklaneColor else {
+            return isActive ? activeTextColor.withAlphaComponent(0.66) : theme.tertiaryText
+        }
+
+        let sidebarSurface = theme.sidebarBackground.composited(
+            over: theme.windowBackground
+        )
+        let tinted = theme.tertiaryText.mixed(
+            towards: worklaneColor.tint(alpha: 1),
+            amount: WorklaneColor.headerLabelTintAmount
+        )
+        return pushedToContrast(tinted, on: sidebarSurface, minimum: 4.5)
+    }
+
+    /// Walk a color away from a surface until it clears `minimum`.
+    ///
+    /// `NSColor.ensuringTextContrast` bails to near-white or near-black in one
+    /// step, which would throw the lane hue away entirely. Stepping toward the
+    /// same extreme instead keeps as much of the hue as the contrast budget
+    /// allows, and always terminates: white on a dark surface (and black on a
+    /// light one) clears any reachable minimum.
+    private static func pushedToContrast(
+        _ color: NSColor,
+        on surface: NSColor,
+        minimum: CGFloat
+    ) -> NSColor {
+        guard color.contrastRatio(against: surface) < minimum else {
+            return color
+        }
+
+        let target: NSColor = surface.isDarkThemeColor ? .white : .black
+        var amount: CGFloat = 0
+        var candidate = color
+        while amount < 1, candidate.contrastRatio(against: surface) < minimum {
+            amount += 0.08
+            candidate = color.mixed(towards: target, amount: min(amount, 1))
+        }
+        return candidate
     }
 
     static func overflowTextColor(

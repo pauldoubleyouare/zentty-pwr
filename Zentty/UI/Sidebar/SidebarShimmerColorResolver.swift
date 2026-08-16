@@ -34,11 +34,22 @@ enum SidebarShimmerColorResolver {
         let alpha: CGFloat
         switch treatment {
         case .highlight:
-            resolved = hsbAdjusted(
-                baseColor,
-                saturationMultiplier: 1.08,
-                brightnessMultiplier: theme.sidebarGlassAppearance == .dark ? 1.12 : 0.86
-            )
+            if theme.sidebarGlassAppearance == .dark {
+                // The neon palette's dark hexes sit at full HSB brightness, so
+                // the old brightness multiplier has nowhere left to go — it
+                // clamps and the sweep flattens into the lane color. At full
+                // brightness the only headroom left is white, and pushing
+                // saturation instead would make the band *darker*, not
+                // brighter. Lift toward white so the sweep reads as light
+                // crossing the glyphs.
+                resolved = baseColor.srgbClamped.mixed(towards: .white, amount: 0.24)
+            } else {
+                resolved = hsbAdjusted(
+                    baseColor,
+                    saturationMultiplier: 1.08,
+                    brightnessMultiplier: 0.86
+                )
+            }
             alpha = highlightAlpha(isActive: isActive, theme: theme)
 
         case .shadow:

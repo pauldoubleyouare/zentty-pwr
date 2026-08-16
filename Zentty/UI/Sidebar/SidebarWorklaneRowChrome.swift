@@ -101,14 +101,24 @@ final class SidebarWorklaneRowChrome {
     ) {
         let hoverBackground = theme.sidebarButtonHoverBackground
         let inactiveBackground = theme.sidebarButtonInactiveBackground
+        // Raised from the old 0.10/0.16 hairline alphas: the group border now
+        // carries the lane boundary, so an uncolored lane still has to fence
+        // itself rather than dissolve into the stack.
         let inactiveBorder = theme.sidebarButtonInactiveBorder.withAlphaComponent(
-            isHovered ? 0.16 : 0.10
+            isHovered ? 0.30 : 0.22
         )
-        let normalShadowStyle = ShadowStyle(
-            color: NSColor.black.withAlphaComponent(summary.isActive ? 0.08 : 0.02).cgColor,
-            opacity: 1,
-            radius: summary.isActive ? 12 : 4,
-            offset: CGSize(width: 0, height: -1)
+        let groupBorder = SidebarWorklaneRowStyleResolver.groupBorder(
+            worklaneColor: summary.color,
+            isActive: summary.isActive,
+            isHovered: isHovered,
+            isPaneRowHovered: isPaneRowHovered,
+            activeBorder: activeBorder,
+            inactiveBorder: inactiveBorder,
+            theme: theme
+        )
+        let normalShadowStyle = Self.shadowStyle(
+            for: groupBorder,
+            isActive: summary.isActive
         )
         self.normalShadowStyle = normalShadowStyle
 
@@ -126,8 +136,8 @@ final class SidebarWorklaneRowChrome {
                     inactiveBackground: inactiveBackground,
                 theme: theme
             ).cgColor
-            layer?.borderColor = (summary.isActive ? activeBorder : inactiveBorder).cgColor
-            layer?.borderWidth = summary.isActive ? 0.8 : 1
+            layer?.borderColor = groupBorder.color.cgColor
+            layer?.borderWidth = groupBorder.width
             if let layer {
                 self.apply(normalShadowStyle, to: layer)
             }
@@ -138,6 +148,35 @@ final class SidebarWorklaneRowChrome {
                 isPaneRowHovered: isPaneRowHovered
             )
         }
+    }
+
+    /// The card's drop shadow, or — for an active lane that resolved a glow —
+    /// a lane-colored bloom in its place.
+    ///
+    /// The bloom reuses the row's existing shadow rather than adding a layer:
+    /// the row already draws unclipped (`masksToBounds = false`) and already
+    /// lifts to `zPosition = 10` when active, so the halo lands over its
+    /// neighbours the way neon should. It is centered (no offset) because a
+    /// glow that falls downward reads as a shadow, not as light.
+    private static func shadowStyle(
+        for groupBorder: SidebarWorklaneRowStyleResolver.GroupBorder,
+        isActive: Bool
+    ) -> ShadowStyle {
+        guard let glow = groupBorder.glow else {
+            return ShadowStyle(
+                color: NSColor.black.withAlphaComponent(isActive ? 0.08 : 0.02).cgColor,
+                opacity: 1,
+                radius: isActive ? 12 : 4,
+                offset: CGSize(width: 0, height: -1)
+            )
+        }
+
+        return ShadowStyle(
+            color: glow.cgColor,
+            opacity: 1,
+            radius: 10,
+            offset: .zero
+        )
     }
 
     private func apply(_ style: ShadowStyle, to layer: CALayer) {
