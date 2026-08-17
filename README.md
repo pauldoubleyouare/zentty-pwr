@@ -1,64 +1,53 @@
 <!-- LOGO -->
 <h1>
 <p align="center">
-  <img src="assets/icon.png" alt="Zentty" width="128">
-  <br>Zentty
+  <img src="assets/icon-pwr.png" alt="Zentty PWR" width="128">
+  <br>Zentty PWR
 </h1>
   <p align="center">
-    A native macOS terminal for agent-driven development, built on Ghostty.
+    A personal fork of <a href="https://github.com/dedene/zentty">Zentty</a>, the native macOS terminal for agent-driven development.
     <br />
-    Zentty gets out of the way. Minimal friction, maximum focus.
+    Same app underneath. A few changes that matter to one workflow.
     <br />
-    <a href="https://github.com/dedene/zentty/releases/latest/download/Zentty.dmg">Download</a>
-    ·
-    <a href="#install">Install</a>
-    ·
-    <a href="#status">Status</a>
+    <a href="#whats-different-here">What's different</a>
     ·
     <a href="#build">Build</a>
     ·
-    <a href="CONTRIBUTING.md">Contributing</a>
+    <a href="#upstream">Upstream</a>
   </p>
 </p>
 
-<p align="center">
-  <img src="assets/screenshot.png" alt="Zentty screenshot" width="880">
-</p>
+> Not a product, and not a competing distribution. This exists so one person's
+> machines can run the same customized build. Everything good here is Zentty's;
+> see [Upstream](#upstream) for credit and [License](#license) for terms.
 
-## Features
+## What's different here
 
-- **Worklanes, not just tabs.** Borrowed from niri and Hyprland: a horizontally-scrolling strip of columns, each column a vertical stack of panes. Rearrange (via mouse drag or keyboard shortcuts), resize, and navigate without losing your place.
-- **Keyboard-first, top to bottom.** Every action is a command. Every command is bindable. Rebind anything in settings, or fall back to the command palette when your muscle memory runs out.
-- **Resume your workspace** Zentty restores your worklanes on relaunch and can reopen agent sessions that were closed without finishing.
-- **Command palette** A fuzzy-searchable list of every action in the app, with your recent commands on top.
-- **Global search** Search inside the current pane or across every worklane with a single shortcut. Search without losing flow.
-- **Agent-aware.** Claude Code, Codex, Copilot CLI, Cursor, Droid CLI, Gemini CLI, Hermes Agent, Kimi CLI, OpenCode, and Pi report their status into the sidebar, so you see what they're doing, what they're asking, and when they need you, without switching panes.
-- **Native Ghostty themes.** Zentty reads Ghostty themes directly, with a built-in picker, live preview, opacity, and blur. And if you've never installed
-   Ghostty, the default experience is polished out of the box.
-- **Scriptable control** Interaction with worklanes or panes is scriptable via the embedded zentty CLI.
-- **Built on Ghostty.** GPU-accelerated rendering via `libghostty`, wrapped in a native Swift and AppKit shell. No Electron, no web views. It feels like a Mac app because it is one.
+- **Worklane borders.** Each worklane group is outlined with a 2-3px border in its own color, so lane boundaries read at a glance instead of blending into one long list.
+- **Neon worklane palette.** Higher-chroma complementary colors, with saturation and luminance adjusted per light/dark appearance so they stay legible either way.
+- **`--json` actually works on `list` commands.** Upstream accepts the flag but the parent command consumed it before the subcommand could see it, so the human table printed regardless. Fixed by sharing one options group instead of declaring the flag twice.
+- **Pane and worklane JSON carry stable identity.** Each object now includes its raw ID plus the full, untruncated title, so an external tool can resolve a pane ID to its current title. The human tables still truncate, as before.
+- **Distinct name and icon.** The app installs as `Zentty-PWR.app` and ships its own icon, so it is never confused with an upstream install. The bundle identifier is deliberately unchanged, which keeps existing worklane and session state intact.
 
-See [Zentty CLI](docs/cli.md) for command-line usage.
-
-## Agent Skill
-
-Agents can install the Zentty CLI skill to discover pane-aware commands while running inside Zentty:
-
-```bash
-npx skills add dedene/zentty
-```
+Everything else, including features, keybindings and behavior, is upstream Zentty. See the [upstream README](https://github.com/dedene/zentty#readme) for the full feature list, and [Zentty CLI](docs/cli.md) for command-line usage.
 
 ## Install
 
-Download the latest `.dmg` from the [releases page](https://github.com/dedene/zentty/releases/latest), open it, and drag Zentty to your Applications folder.
+No releases are published here. Build from source:
 
-Zentty updates itself in place via [Sparkle](https://sparkle-project.org) once installed. No need to check back here for new versions.
+```bash
+git clone https://github.com/pauldoubleyouare/zentty-pwr.git
+cd zentty-pwr
+./scripts/build_ghosttykit.sh
+xcodebuild -scheme Zentty -configuration Release -destination 'platform=macOS' \
+  -derivedDataPath build build \
+  CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+cp -R build/Build/Products/Release/Zentty.app /Applications/Zentty-PWR.app
+```
 
-Builds are signed and notarized by Zenjoy BV. Requires macOS 14 (Sonoma) or later.
+Building locally matters: a copied `.app` picks up a quarantine flag and gets blocked, while one you build yourself does not.
 
-## Status
-
-Zentty is in active development. Expect rapid iteration, rough edges, and occasional breaking changes while the project is opened up.
+Unlike upstream, these builds are unsigned and un-notarized, and Sparkle auto-update is not configured. Pull and rebuild to update.
 
 ## Requirements
 
@@ -99,28 +88,32 @@ Run the full test suite:
 ZENTTY_TEST_DISPLAY_PROVIDER=betterdisplay scripts/test-on-virtual-display
 ```
 
-## Agent Hooks
+Note: several tests assert against the upstream maintainer's home directory and
+fail anywhere else. They fail on a clean checkout of upstream too, so treat that
+set as a known-red baseline rather than a regression.
 
-Zentty bundles helper commands and environment variables for agent-aware workflows inside terminal panes.
+## Upstream
 
-Hook configuration details are documented in [`docs/agent-hooks.md`](docs/agent-hooks.md).
+Zentty is built and maintained by [Peter Dedene](https://github.com/dedene) and Zenjoy BV. The worklane model, the Ghostty integration, the agent-status sidebar, and effectively all of the engineering are theirs. This fork is a thin layer on top.
 
-For Kimi specifically: do first-time auth with `kimi login` before using wrapped `kimi` inside Zentty. Zentty passthroughs Kimi's management commands directly to the real Kimi binary so login/logout keep using the default Kimi config. If you want a specific model, prefer `kimi --model <model-id>` or set `default_model` in `~/.kimi/config.toml` (or `~/.kimi-code/config.toml` for modern Kimi Code CLI).
+To pull upstream changes in:
 
-## Contributing
+```bash
+git remote add upstream https://github.com/dedene/zentty.git
+git fetch upstream
+git merge upstream/main
+```
 
-Contributions are welcome. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-Before a non-trivial contribution can be merged, contributors must agree to [`CLA.md`](CLA.md).
+Changes here that are generally useful get sent back as pull requests rather than kept private.
 
 ## License
 
-Zentty is available under the GNU General Public License v3.0 only (`GPL-3.0-only`). See [`LICENSE`](LICENSE).
+GNU General Public License v3.0 only (`GPL-3.0-only`), inherited from upstream. See [`LICENSE`](LICENSE).
 
 If your organization cannot or does not want to comply with GPLv3, alternative commercial licensing may be available from Zenjoy BV. Contact `hallo@zenjoy.be`.
 
 ## Trademarks
 
-The GPL license covers the code. It does not grant rights to use the Zentty name, logos, icons, or other branding for your own distribution.
+The GPL covers the code, not the branding. Per [`TRADEMARKS.md`](TRADEMARKS.md), the Zentty name, logo and icons are not licensed for redistribution.
 
-See [`TRADEMARKS.md`](TRADEMARKS.md) for branding rules.
+This fork ships its own icon and installs under its own app name for that reason. It is a personal build, not a distribution, and it is not affiliated with or endorsed by Zenjoy BV.
