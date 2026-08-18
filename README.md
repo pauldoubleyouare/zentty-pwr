@@ -42,12 +42,25 @@ cd zentty-pwr
 xcodebuild -scheme Zentty -configuration Release -destination 'platform=macOS' \
   -derivedDataPath build build \
   CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-cp -R build/Build/Products/Release/Zentty.app /Applications/Zentty-PWR.app
+./scripts/install_to_applications.sh
 ```
 
 Building locally matters: a copied `.app` picks up a quarantine flag and gets blocked, while one you build yourself does not.
 
-Unlike upstream, these builds are unsigned and un-notarized, and Sparkle auto-update is not configured. Pull and rebuild to update.
+Unlike upstream, these builds are not notarized, and Sparkle auto-update is not configured. Pull and rebuild to update.
+
+### Permission prompts and the signing identity
+
+macOS keys permission grants (Desktop, Documents, Downloads, Full Disk Access, Accessibility) to an app's code signature. `xcodebuild` produces an ad-hoc signature, which has no stable identity, so every rebuild looks like a brand-new app and macOS re-prompts for everything. Terminal apps hit this hard: every permission a session or hook needs comes back after each build.
+
+`scripts/install_to_applications.sh` fixes that by signing each build with the same local certificate before it lands in `/Applications`. Create the certificate once:
+
+1. Open Keychain Access.
+2. Menu: Keychain Access > Certificate Assistant > Create a Certificate.
+3. Name: `Zentty PWR Local`. Identity Type: Self Signed Root. Certificate Type: Code Signing.
+4. Create, then Done.
+
+The script refuses to run if the certificate is missing. Set `SIGN_IDENTITY` to use a different name, or a real Developer ID if you have one. The previous install is kept at `/Applications/Zentty-PWR.app.previous`.
 
 ## Requirements
 
